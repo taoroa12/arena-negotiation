@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Арена переговоров</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="container">
+  <header class="top">
+    <div class="brand-mark">АП</div>
+    <div class="titles">
+      <h1>Арена переговоров</h1>
+      <div class="tagline">Тренажёр деловых переговоров с обратной связью</div>
+    </div>
+    <a class="nav-link" href="/admin">Панель администратора →</a>
+  </header>
+
+  <div class="card" id="setup-card">
+    <label>Ваше имя</label>
+    <input id="user-name" placeholder="Введите имя">
+    <label>Сценарий</label>
+    <select id="scenario-select"></select>
+    <button id="start-btn">Начать переговоры</button>
+  </div>
+
+  <div class="card" id="chat-card" style="display:none">
+    <div class="opponent-brief" id="opponent-brief"></div>
+    <div class="tension-wrap">
+      <div class="tension-label"><span>Градус переговоров</span><span id="tension-value">спокойно</span></div>
+      <div class="tension-bar"><div class="tension-fill" id="tension-fill"></div></div>
+    </div>
+    <div class="chat-box" id="chat-box"></div>
+    <div class="input-row">
+      <input id="msg-input" placeholder="Ваша реплика...">
+      <button id="send-btn">Отправить</button>
+    </div>
+    <button class="secondary" id="finish-btn">Завершить и получить разбор</button>
+  </div>
+
+  <div class="card feedback" id="feedback-card" style="display:none"></div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
