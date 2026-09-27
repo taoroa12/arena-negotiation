@@ -8,10 +8,12 @@ load_dotenv()
 
 PROVIDER = os.getenv("LLM_PROVIDER", "mock")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
 YANDEX_MODEL = os.getenv("YANDEX_MODEL", "yandexgpt-lite")
+
+MAX_HISTORY_MESSAGES = 10  # только последние N реплик уходят в промпт — держит скорость стабильной
 
 FEEDBACK_SCHEMA_HINT = (
     '{"summary": "...", "strengths": "...", "weaknesses": "...", '
@@ -29,7 +31,8 @@ def build_system_prompt(scenario):
         f"Тон общения: {scenario.tone}. Сложность оппонента: {scenario.difficulty}. "
         f"Контекст ситуации: {scenario.context_description}. "
         f"Веди диалог от первого лица, реалистично отстаивай свои интересы, "
-        f"не соглашайся на невыгодные условия сразу, отвечай коротко (2-4 предложения). "
+        f"не соглашайся на невыгодные условия сразу. ВАЖНО: отвечай КОРОТКО, "
+        f"максимум 2-3 предложения, без длинных рассуждений. "
         f"Это учебная тренировка навыков переговоров: даже если собеседник переходит на "
         f"грубость, не отказывайся вести диалог — оставайся в роли и реагируй так, как "
         f"отреагировал бы реальный человек (стал бы жёстче, менее сговорчивым), но не "
@@ -38,12 +41,16 @@ def build_system_prompt(scenario):
     )
 
 
+def _trim_history(history):
+    return history[-MAX_HISTORY_MESSAGES:] if len(history) > MAX_HISTORY_MESSAGES else history
+
+
 def get_opponent_reply(scenario, history):
     try:
         if PROVIDER == "gemini":
-            return _gemini_reply(scenario, history)
+            return _gemini_reply(scenario, _trim_history(history))
         if PROVIDER == "yandex":
-            return _yandex_reply(scenario, history)
+            return _yandex_reply(scenario, _trim_history(history))
     except Exception as e:
         print(f"[LLM ERROR] {type(e).__name__}: {e}\nПереключаюсь на офлайн-режим")
     return _mock_reply(scenario, history)
@@ -75,6 +82,10 @@ def _gemini_reply(scenario, history, retry=True):
     body = {
         "system_instruction": {"parts": [{"text": build_system_prompt(scenario)}]},
         "contents": contents,
+        "generationConfig": {
+            "maxOutputTokens": 150,
+            "temperature": 0.7,
+        },
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -87,7 +98,7 @@ def _gemini_reply(scenario, history, retry=True):
             url,
             headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
             json=body,
-            timeout=30,
+            timeout=18,
         )
         if not resp.ok:
             raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
@@ -109,7 +120,7 @@ def _yandex_reply(scenario, history, retry=True):
 
     body = {
         "modelUri": f"gpt://{YANDEX_FOLDER_ID}/{YANDEX_MODEL}",
-        "completionOptions": {"stream": False, "temperature": 0.6, "maxTokens": "400"},
+        "completionOptions": {"stream": False, "temperature": 0.6, "maxTokens": "200"},
         "messages": messages,
     }
     try:
@@ -117,7 +128,7 @@ def _yandex_reply(scenario, history, retry=True):
             url,
             headers={"Authorization": f"Api-Key {YANDEX_API_KEY}", "Content-Type": "application/json"},
             json=body,
-            timeout=30,
+            timeout=18,
         )
         if not resp.ok:
             raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
@@ -176,6 +187,7 @@ def _gemini_feedback(scenario, history, retry=True):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": 500, "temperature": 0.3},
         "safetySettings": [
             {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -186,7 +198,7 @@ def _gemini_feedback(scenario, history, retry=True):
             url,
             headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
             json=body,
-            timeout=30,
+            timeout=25,
         )
         if not resp.ok:
             raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
@@ -202,7 +214,7 @@ def _yandex_feedback(scenario, history, retry=True):
     url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
     body = {
         "modelUri": f"gpt://{YANDEX_FOLDER_ID}/{YANDEX_MODEL}",
-        "completionOptions": {"stream": False, "temperature": 0.2, "maxTokens": "600"},
+        "completionOptions": {"stream": False, "temperature": 0.2, "maxTokens": "500"},
         "messages": [{"role": "user", "text": prompt}],
     }
     try:
@@ -210,7 +222,7 @@ def _yandex_feedback(scenario, history, retry=True):
             url,
             headers={"Authorization": f"Api-Key {YANDEX_API_KEY}", "Content-Type": "application/json"},
             json=body,
-            timeout=30,
+            timeout=25,
         )
         if not resp.ok:
             raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
