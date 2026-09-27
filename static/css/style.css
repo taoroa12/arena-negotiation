@@ -297,3 +297,4 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 @keyframes fall {
   to { transform: translateY(110vh) rotate(360deg); opacity: 0; }
 }
+button:disabled { opacity: .55; cursor: wait; }
