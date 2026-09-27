@@ -8,7 +8,7 @@ load_dotenv()
 
 PROVIDER = os.getenv("LLM_PROVIDER", "mock")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]  # первая — основная, вторая — резерв
+GEMINI_MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]  # первая — основная, вторая — резерв
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
 YANDEX_MODEL = os.getenv("YANDEX_MODEL", "yandexgpt-lite")
