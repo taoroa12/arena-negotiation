@@ -1,11 +1,18 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from database import engine, Base
+from database import engine, Base, SessionLocal
 import models
 from routers import admin, negotiation
+from seed_data import seed_scenarios
 
 Base.metadata.create_all(bind=engine)
+
+db = SessionLocal()
+try:
+    seed_scenarios(db, models)
+finally:
+    db.close()
 
 app = FastAPI(title="Арена переговоров")
 

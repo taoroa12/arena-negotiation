@@ -55,6 +55,8 @@ class FeedbackOut(BaseModel):
     summary: str
     strengths: str
     weaknesses: str
+    deal_status: str
+    deal_terms: str
     score_goal: int
     score_argumentation: int
     score_empathy: int

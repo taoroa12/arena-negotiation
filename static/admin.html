@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Админка — Арена переговоров</title>
+<title>Конструктор сценариев — Арена переговоров</title>
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -11,13 +11,13 @@
   <header class="top">
     <div class="brand-mark">АП</div>
     <div class="titles">
-      <h1>Панель администратора</h1>
-      <div class="tagline">Настройка сценариев переговоров</div>
+      <h1>Конструктор сценариев</h1>
+      <div class="tagline">Настройка контекста для тренажёра</div>
     </div>
     <a class="nav-link" href="/">← К тренажёру</a>
   </header>
 
-  <div class="card">
+  <div class="card fade-in">
     <label>Название</label>
     <input id="f-title" placeholder="Переговоры о скидке с поставщиком">
     <label>Сфера</label>
@@ -45,7 +45,7 @@
     <button id="create-btn">Создать сценарий</button>
   </div>
 
-  <div class="card">
+  <div class="card fade-in">
     <h3 style="margin-top:0;font-family:'Fraunces',serif;font-style:italic;color:var(--paper)">Существующие сценарии</h3>
     <div id="scenario-list">Загрузка...</div>
   </div>

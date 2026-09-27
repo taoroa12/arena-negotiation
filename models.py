@@ -56,6 +56,8 @@ class Feedback(Base):
     summary = Column(Text)
     strengths = Column(Text)
     weaknesses = Column(Text)
+    deal_status = Column(String)
+    deal_terms = Column(Text)
     score_goal = Column(Integer)
     score_argumentation = Column(Integer)
     score_empathy = Column(Integer)

@@ -14,10 +14,20 @@
       <h1>Арена переговоров</h1>
       <div class="tagline">Тренажёр деловых переговоров с обратной связью</div>
     </div>
-    <a class="nav-link" href="/admin">Панель администратора →</a>
+    <a class="nav-link" href="/admin">Конструктор сценариев →</a>
   </header>
 
-  <div class="card" id="setup-card">
+  <div class="card" id="rank-card">
+    <div class="rank-row">
+      <div class="rank-badge" id="rank-badge">Новичок</div>
+      <div class="rank-progress">
+        <div class="rank-xp-label"><span id="rank-xp-text">0 XP</span><span id="rank-next-text">до следующего уровня: 100</span></div>
+        <div class="rank-bar"><div class="rank-fill" id="rank-fill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card fade-in" id="setup-card">
     <label>Ваше имя</label>
     <input id="user-name" placeholder="Введите имя">
     <label>Сценарий</label>
@@ -25,13 +35,23 @@
     <button id="start-btn">Начать переговоры</button>
   </div>
 
-  <div class="card" id="chat-card" style="display:none">
-    <div class="opponent-brief" id="opponent-brief"></div>
+  <div class="card fade-in" id="chat-card" style="display:none">
+    <div class="opponent-brief">
+      <div id="opponent-brief-text"></div>
+      <span class="mood-face" id="mood-face">🙂</span>
+    </div>
     <div class="tension-wrap">
-      <div class="tension-label"><span>Градус переговоров</span><span id="tension-value">спокойно</span></div>
+      <div class="tension-label">
+        <span>Градус переговоров</span>
+        <span id="round-score">Очки раунда: 0</span>
+        <span id="tension-value">спокойно</span>
+      </div>
       <div class="tension-bar"><div class="tension-fill" id="tension-fill"></div></div>
     </div>
     <div class="chat-box" id="chat-box"></div>
+    <div class="typing-row" id="typing-row" style="display:none">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    </div>
     <div class="input-row">
       <input id="msg-input" placeholder="Ваша реплика...">
       <button id="send-btn">Отправить</button>
@@ -39,9 +59,10 @@
     <button class="secondary" id="finish-btn">Завершить и получить разбор</button>
   </div>
 
-  <div class="card feedback" id="feedback-card" style="display:none"></div>
+  <div class="card feedback fade-in" id="feedback-card" style="display:none"></div>
 </div>
 
+<div class="confetti-layer" id="confetti-layer"></div>
 <script src="/static/js/app.js"></script>
 </body>
 </html>

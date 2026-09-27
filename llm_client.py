@@ -8,9 +8,17 @@ load_dotenv()
 
 PROVIDER = os.getenv("LLM_PROVIDER", "mock")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
+YANDEX_MODEL = os.getenv("YANDEX_MODEL", "yandexgpt-lite")
+
+FEEDBACK_SCHEMA_HINT = (
+    '{"summary": "...", "strengths": "...", "weaknesses": "...", '
+    '"deal_status": "сделка достигнута | частичное соглашение | переговоры сорваны", '
+    '"deal_terms": "краткое описание финальных условий сделки, если она состоялась, иначе почему сорвалась", '
+    '"score_goal": 0-10, "score_argumentation": 0-10, "score_empathy": 0-10, "score_tactics": 0-10}'
+)
 
 
 def build_system_prompt(scenario):
@@ -23,10 +31,10 @@ def build_system_prompt(scenario):
         f"Веди диалог от первого лица, реалистично отстаивай свои интересы, "
         f"не соглашайся на невыгодные условия сразу, отвечай коротко (2-4 предложения). "
         f"Это учебная тренировка навыков переговоров: даже если собеседник переходит на "
-        f"грубость или оскорбления, не отказывайся вести диалог — оставайся в роли и "
-        f"реагируй так, как отреагировал бы реальный человек в такой ситуации "
-        f"(например, стал бы более жёстким, менее сговорчивым, или взял паузу и вернул "
-        f"разговор в деловое русло), но не завершай диалог полностью."
+        f"грубость, не отказывайся вести диалог — оставайся в роли и реагируй так, как "
+        f"отреагировал бы реальный человек (стал бы жёстче, менее сговорчивым), но не "
+        f"обрывай диалог полностью. Если собеседник предлагает разумный компромисс, "
+        f"постепенно двигайся навстречу — переговоры должны иметь шанс завершиться сделкой."
     )
 
 
@@ -41,71 +49,84 @@ def get_opponent_reply(scenario, history):
     return _mock_reply(scenario, history)
 
 
-def _extract_text(data):
+def _extract_gemini_text(data):
     if "candidates" not in data or not data["candidates"]:
         reason = data.get("promptFeedback", {}).get("blockReason", "неизвестна")
-        raise RuntimeError(f"Gemini не вернул ответ (candidates пуст). Причина блокировки: {reason}")
+        raise RuntimeError(f"Gemini не вернул ответ. Причина блокировки: {reason}")
     candidate = data["candidates"][0]
     if candidate.get("finishReason") == "SAFETY":
-        raise RuntimeError("Gemini заблокировал ответ по соображениям безопасности (finishReason=SAFETY)")
+        raise RuntimeError("Gemini заблокировал ответ (finishReason=SAFETY)")
     parts = candidate.get("content", {}).get("parts")
     if not parts:
         raise RuntimeError(f"Gemini вернул пустой content, finishReason={candidate.get('finishReason')}")
     return parts[0]["text"].strip()
 
 
-def _gemini_reply(scenario, history):
+def _gemini_reply(scenario, history, retry=True):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-
     if history:
         contents = [
             {"role": "user" if m["role"] == "user" else "model", "parts": [{"text": m["content"]}]}
             for m in history
         ]
     else:
-        contents = [{"role": "user", "parts": [{"text": "Начни переговоры первым: поздоровайся и обозначь свою позицию по теме."}]}]
+        contents = [{"role": "user", "parts": [{"text": "Начни переговоры первым: поздоровайся и обозначь позицию."}]}]
 
     body = {
         "system_instruction": {"parts": [{"text": build_system_prompt(scenario)}]},
         "contents": contents,
         "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
             {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
         ],
     }
-    resp = requests.post(
-        url,
-        headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
-        json=body,
-        timeout=15,
-    )
-    if not resp.ok:
-        raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
-    return _extract_text(resp.json())
+    try:
+        resp = requests.post(
+            url,
+            headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
+            json=body,
+            timeout=30,
+        )
+        if not resp.ok:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        return _extract_gemini_text(resp.json())
+    except Exception:
+        if retry:
+            return _gemini_reply(scenario, history, retry=False)
+        raise
 
 
-def _yandex_reply(scenario, history):
+def _yandex_reply(scenario, history, retry=True):
     url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
     messages = [{"role": "system", "text": build_system_prompt(scenario)}]
-    for m in history:
-        messages.append({"role": "user" if m["role"] == "user" else "assistant", "text": m["content"]})
+    if history:
+        for m in history:
+            messages.append({"role": "user" if m["role"] == "user" else "assistant", "text": m["content"]})
+    else:
+        messages.append({"role": "user", "text": "Начни переговоры первым: поздоровайся и обозначь позицию."})
+
     body = {
-        "modelUri": f"gpt://{YANDEX_FOLDER_ID}/yandexgpt-lite",
-        "completionOptions": {"stream": False, "temperature": 0.6, "maxTokens": 300},
+        "modelUri": f"gpt://{YANDEX_FOLDER_ID}/{YANDEX_MODEL}",
+        "completionOptions": {"stream": False, "temperature": 0.6, "maxTokens": "400"},
         "messages": messages,
     }
-    resp = requests.post(
-        url,
-        headers={"Authorization": f"Api-Key {YANDEX_API_KEY}", "Content-Type": "application/json"},
-        json=body,
-        timeout=15,
-    )
-    if not resp.ok:
-        raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
-    data = resp.json()
-    return data["result"]["alternatives"][0]["message"]["text"].strip()
+    try:
+        resp = requests.post(
+            url,
+            headers={"Authorization": f"Api-Key {YANDEX_API_KEY}", "Content-Type": "application/json"},
+            json=body,
+            timeout=30,
+        )
+        if not resp.ok:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        data = resp.json()
+        return data["result"]["alternatives"][0]["message"]["text"].strip()
+    except Exception:
+        if retry:
+            return _yandex_reply(scenario, history, retry=False)
+        raise
 
 
 _MOCK_REPLIES = {
@@ -129,38 +150,77 @@ def get_feedback(scenario, history):
     try:
         if PROVIDER == "gemini":
             return _gemini_feedback(scenario, history)
+        if PROVIDER == "yandex":
+            return _yandex_feedback(scenario, history)
     except Exception as e:
         print(f"[LLM ERROR] {type(e).__name__}: {e}\nОфлайн-разбор")
     return _mock_feedback(history)
 
 
-def _gemini_feedback(scenario, history):
+def _parse_feedback_json(text):
+    text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    return json.loads(text)
+
+
+def _feedback_prompt(scenario, history):
     transcript = "\n".join(f"{m['role']}: {m['content']}" for m in history)
-    prompt = (
-        f"Проанализируй переговоры по сценарию '{scenario.title}'.\n{transcript}\n\n"
-        "Верни ТОЛЬКО валидный JSON без markdown-разметки в формате: "
-        '{"summary": "...", "strengths": "...", "weaknesses": "...", '
-        '"score_goal": 0-10, "score_argumentation": 0-10, "score_empathy": 0-10, "score_tactics": 0-10}'
+    return (
+        f"Проанализируй переговоры по сценарию '{scenario.title}' ({scenario.context_description}).\n"
+        f"{transcript}\n\n"
+        f"Верни ТОЛЬКО валидный JSON без markdown-разметки в формате: {FEEDBACK_SCHEMA_HINT}"
     )
+
+
+def _gemini_feedback(scenario, history, retry=True):
+    prompt = _feedback_prompt(scenario, history)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         "safetySettings": [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
         ],
     }
-    resp = requests.post(
-        url,
-        headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
-        json=body,
-        timeout=20,
-    )
-    if not resp.ok:
-        raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
-    text = _extract_text(resp.json())
-    text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    return json.loads(text)
+    try:
+        resp = requests.post(
+            url,
+            headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
+            json=body,
+            timeout=30,
+        )
+        if not resp.ok:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        return _parse_feedback_json(_extract_gemini_text(resp.json()))
+    except Exception:
+        if retry:
+            return _gemini_feedback(scenario, history, retry=False)
+        raise
+
+
+def _yandex_feedback(scenario, history, retry=True):
+    prompt = _feedback_prompt(scenario, history)
+    url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
+    body = {
+        "modelUri": f"gpt://{YANDEX_FOLDER_ID}/{YANDEX_MODEL}",
+        "completionOptions": {"stream": False, "temperature": 0.2, "maxTokens": "600"},
+        "messages": [{"role": "user", "text": prompt}],
+    }
+    try:
+        resp = requests.post(
+            url,
+            headers={"Authorization": f"Api-Key {YANDEX_API_KEY}", "Content-Type": "application/json"},
+            json=body,
+            timeout=30,
+        )
+        if not resp.ok:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        data = resp.json()
+        text = data["result"]["alternatives"][0]["message"]["text"]
+        return _parse_feedback_json(text)
+    except Exception:
+        if retry:
+            return _yandex_feedback(scenario, history, retry=False)
+        raise
 
 
 def _mock_feedback(history):
@@ -169,6 +229,8 @@ def _mock_feedback(history):
         "summary": "Автоматический разбор (офлайн-режим): переговоры завершены.",
         "strengths": "Вы участвовали в диалоге и предлагали аргументы.",
         "weaknesses": "Подключите LLM-провайдера для детального разбора формулировок.",
+        "deal_status": "неизвестно (офлайн-режим)",
+        "deal_terms": "Разбор недоступен без подключения к LLM.",
         "score_goal": 5,
         "score_argumentation": min(10, len(user_msgs)),
         "score_empathy": 5,
